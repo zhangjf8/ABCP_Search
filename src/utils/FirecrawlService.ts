@@ -1,12 +1,10 @@
-import FirecrawlApp from '@mendable/firecrawl-js';
-
+// Browser-compatible Firecrawl API service using direct REST calls
 export class FirecrawlService {
   private static API_KEY_STORAGE_KEY = 'firecrawl_api_key';
-  private static firecrawlApp: FirecrawlApp | null = null;
+  private static BASE_URL = 'https://api.firecrawl.dev';
 
   static saveApiKey(apiKey: string): void {
     localStorage.setItem(this.API_KEY_STORAGE_KEY, apiKey);
-    this.firecrawlApp = new FirecrawlApp({ apiKey });
     console.log('API key saved successfully');
   }
 
@@ -17,10 +15,20 @@ export class FirecrawlService {
   static async testApiKey(apiKey: string): Promise<boolean> {
     try {
       console.log('Testing API key with Firecrawl API');
-      this.firecrawlApp = new FirecrawlApp({ apiKey });
-      // A simple test to verify the API key
-      const testResponse = await this.firecrawlApp.scrape('https://example.com');
-      return !!testResponse; // If response exists, API key is likely valid
+      
+      const response = await fetch(`${this.BASE_URL}/v0/scrape`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: 'https://example.com',
+          formats: ['markdown']
+        }),
+      });
+
+      return response.status === 200;
     } catch (error) {
       console.error('Error testing API key:', error);
       return false;
@@ -35,26 +43,44 @@ export class FirecrawlService {
 
     try {
       console.log('Making scrape request to Firecrawl API for:', url);
-      if (!this.firecrawlApp) {
-        this.firecrawlApp = new FirecrawlApp({ apiKey });
-      }
-
-      const scrapeResponse = await this.firecrawlApp.scrape(url, {
-        formats: ['markdown', 'html']
+      
+      const response = await fetch(`${this.BASE_URL}/v0/scrape`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: url,
+          formats: ['markdown', 'html'],
+          onlyMainContent: true,
+          includeTags: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'table', 'tr', 'td', 'th', 'div', 'span', 'a'],
+          excludeTags: ['nav', 'footer', 'header', 'aside', 'script', 'style']
+        }),
       });
 
-      if (!scrapeResponse) {
-        console.error('Scrape failed: No response');
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error('Scrape failed:', result);
         return { 
           success: false, 
-          error: 'Failed to scrape website - no response' 
+          error: result.error || `HTTP ${response.status}: Failed to scrape website`
         };
       }
 
-      console.log('Scrape successful:', scrapeResponse);
+      if (!result.success) {
+        console.error('Scrape failed:', result);
+        return { 
+          success: false, 
+          error: result.error || 'Failed to scrape website'
+        };
+      }
+
+      console.log('Scrape successful:', result);
       return { 
         success: true,
-        data: scrapeResponse
+        data: result.data
       };
     } catch (error) {
       console.error('Error during scrape:', error);
@@ -72,30 +98,92 @@ export class FirecrawlService {
     }
 
     try {
-      console.log('Making crawl request to Firecrawl API');
-      if (!this.firecrawlApp) {
-        this.firecrawlApp = new FirecrawlApp({ apiKey });
-      }
-
-      const crawlResponse = await this.firecrawlApp.crawl(url, {
-        limit: 50,
-        scrapeOptions: {
-          formats: ['markdown', 'html']
-        }
+      console.log('Starting crawl request to Firecrawl API');
+      
+      // Start the crawl
+      const crawlResponse = await fetch(`${this.BASE_URL}/v0/crawl`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: url,
+          limit: 50,
+          scrapeOptions: {
+            formats: ['markdown', 'html'],
+            onlyMainContent: true,
+            includeTags: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'table', 'tr', 'td', 'th', 'div', 'span', 'a'],
+            excludeTags: ['nav', 'footer', 'header', 'aside', 'script', 'style']
+          }
+        }),
       });
 
-      if (!crawlResponse) {
-        console.error('Crawl failed: No response');
+      const crawlResult = await crawlResponse.json();
+
+      if (!crawlResponse.ok) {
+        console.error('Crawl start failed:', crawlResult);
         return { 
           success: false, 
-          error: 'Failed to crawl website - no response' 
+          error: crawlResult.error || `HTTP ${crawlResponse.status}: Failed to start crawl`
         };
       }
 
-      console.log('Crawl successful:', crawlResponse);
+      if (!crawlResult.success) {
+        console.error('Crawl start failed:', crawlResult);
+        return { 
+          success: false, 
+          error: crawlResult.error || 'Failed to start crawl'
+        };
+      }
+
+      const jobId = crawlResult.jobId;
+      console.log('Crawl started with job ID:', jobId);
+
+      // Poll for completion
+      let attempts = 0;
+      const maxAttempts = 30; // 5 minutes max wait time
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+        
+        const statusResponse = await fetch(`${this.BASE_URL}/v0/crawl/status/${jobId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+          },
+        });
+
+        const statusResult = await statusResponse.json();
+
+        if (!statusResponse.ok) {
+          return { 
+            success: false, 
+            error: statusResult.error || 'Failed to check crawl status'
+          };
+        }
+
+        if (statusResult.status === 'completed') {
+          console.log('Crawl completed:', statusResult);
+          return { 
+            success: true,
+            data: statusResult
+          };
+        }
+
+        if (statusResult.status === 'failed') {
+          return { 
+            success: false, 
+            error: 'Crawl job failed'
+          };
+        }
+
+        attempts++;
+      }
+
       return { 
-        success: true,
-        data: crawlResponse 
+        success: false, 
+        error: 'Crawl timed out after 5 minutes'
       };
     } catch (error) {
       console.error('Error during crawl:', error);
