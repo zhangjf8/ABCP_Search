@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Search, Building2, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { FirecrawlService } from '@/utils/FirecrawlService';
 
 interface SearchResult {
@@ -30,89 +31,112 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
   const searchABCPLiquidityProvider = async (issuer: string): Promise<SearchResult[]> => {
     setProgress(10);
     
-    // Search for ABCP liquidity provider information
+    // Enhanced search queries specifically for ABCP liquidity provider information
     const searchQueries = [
       `"${issuer}" ABCP liquidity provider facility`,
       `"${issuer}" asset backed commercial paper liquidity support`,
-      `"${issuer}" ABCP program liquidity enhancement`,
+      `"${issuer}" ABCP program liquidity enhancement bank`,
       `"${issuer}" commercial paper conduit liquidity facility`,
+      `"${issuer}" backup liquidity agreement`,
+      `"${issuer}" standby facility ABCP`
     ];
 
     const results: SearchResult[] = [];
+    let processedQueries = 0;
     
-    for (let i = 0; i < searchQueries.length; i++) {
-      const query = searchQueries[i];
-      setProgress(10 + (i / searchQueries.length) * 60);
+    for (const query of searchQueries) {
+      setProgress(10 + (processedQueries / searchQueries.length) * 70);
       
       try {
-        // Use Firecrawl to scrape search results
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-        const scrapeResult = await FirecrawlService.scrapeWebsite(searchUrl);
+        console.log(`Searching for: ${query}`);
         
-        if (scrapeResult.success && scrapeResult.data?.markdown) {
-          const content = scrapeResult.data.markdown;
+        // Use Firecrawl to perform intelligent web search
+        const searchResult = await FirecrawlService.performWebSearch(query);
+        
+        if (searchResult.success && searchResult.data?.markdown) {
+          const content = searchResult.data.markdown;
           
           // Parse content for liquidity provider information
           const liquidityProviders = extractLiquidityProviders(content, issuer);
           results.push(...liquidityProviders);
         }
         
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        processedQueries++;
+        
+        // Add delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 1500));
       } catch (error) {
         console.error(`Error searching for query: ${query}`, error);
+        processedQueries++;
       }
     }
 
-    setProgress(80);
+    setProgress(85);
 
-    // If no results from direct search, try financial database searches
-    if (results.length === 0) {
-      const financialSites = [
-        `site:sec.gov "${issuer}" ABCP liquidity`,
-        `site:bloomberg.com "${issuer}" asset backed commercial paper`,
-        `site:reuters.com "${issuer}" ABCP facility`,
-        `site:moody.com "${issuer}" liquidity provider`,
-      ];
+    // Remove duplicates and sort by confidence
+    const uniqueResults = results.filter((result, index, self) => 
+      index === self.findIndex(r => 
+        r.liquidityProvider.toLowerCase().trim() === result.liquidityProvider.toLowerCase().trim() &&
+        r.issuerName.toLowerCase() === result.issuerName.toLowerCase()
+      )
+    );
 
-      for (const siteQuery of financialSites) {
-        try {
-          const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(siteQuery)}`;
-          const scrapeResult = await FirecrawlService.scrapeWebsite(searchUrl);
-          
-          if (scrapeResult.success && scrapeResult.data?.markdown) {
-            const content = scrapeResult.data.markdown;
-            const liquidityProviders = extractLiquidityProviders(content, issuer);
-            results.push(...liquidityProviders);
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (error) {
-          console.error(`Error searching financial site: ${siteQuery}`, error);
-        }
-      }
-    }
+    // Sort by confidence level
+    const sortedResults = uniqueResults.sort((a, b) => {
+      const confidenceOrder = { 'High': 3, 'Medium': 2, 'Low': 1 };
+      return confidenceOrder[b.confidence] - confidenceOrder[a.confidence];
+    });
 
     setProgress(100);
-    return results.slice(0, 10); // Limit to top 10 results
+    return sortedResults.slice(0, 10); // Limit to top 10 results
   };
 
   const extractLiquidityProviders = (content: string, issuer: string): SearchResult[] => {
     const results: SearchResult[] = [];
     const lines = content.toLowerCase().split('\n');
     
-    // Common liquidity provider keywords
+    // Enhanced liquidity provider keywords
     const liquidityKeywords = [
       'liquidity provider', 'liquidity facility', 'liquidity support',
       'liquidity enhancement', 'backup liquidity', 'liquidity agreement',
-      'credit facility', 'standby facility', 'revolving facility'
+      'credit facility', 'standby facility', 'revolving facility',
+      'committed facility', 'liquidity backstop', 'liquidity arrangement'
     ];
     
-    // Common bank/financial institution patterns
+    // Enhanced bank/financial institution patterns
     const bankPatterns = [
+      // Major global banks
+      /\b(JPMorgan Chase|Goldman Sachs|Bank of America|Wells Fargo|Citibank|Citigroup|Deutsche Bank|Barclays|HSBC|UBS|Credit Suisse)\b/gi,
+      // Canadian banks
+      /\b(Royal Bank of Canada|RBC|Toronto-Dominion|TD Bank|Bank of Montreal|BMO|Bank of Nova Scotia|Scotiabank|Canadian Imperial Bank|CIBC|National Bank of Canada)\b/gi,
+      // Other major banks
+      /\b(BNP Paribas|Société Générale|Crédit Agricole|Santander|ING|ABN AMRO|Nordea|Mizuho|Sumitomo|MUFG|Mitsubishi UFJ)\b/gi,
+      // General bank pattern
       /\b([A-Z][a-z]+ (?:Bank|Capital|Financial|Securities|Trust|Corp|Inc)(?:\s+[A-Z][a-z]+)*)\b/g,
-      /\b(JPMorgan|Goldman Sachs|Bank of America|Wells Fargo|Citibank|Deutsche Bank|Barclays|HSBC|Royal Bank|TD Bank|BMO|Scotiabank)\b/gi
+      // Investment banks and financial services
+      /\b(Morgan Stanley|Merrill Lynch|Credit Suisse|Nomura|Jefferies|Cowen|Piper Sandler|Raymond James)\b/gi
     ];
+
+    // Enhanced confidence scoring
+    const getConfidenceLevel = (line: string, context: string): 'High' | 'Medium' | 'Low' => {
+      const highConfidenceIndicators = [
+        'liquidity provider', 'provides liquidity', 'backup liquidity',
+        'committed facility', 'standby facility', 'liquidity agreement'
+      ];
+      
+      const mediumConfidenceIndicators = [
+        'credit facility', 'revolving facility', 'financial support',
+        'banking facility', 'liquidity enhancement'
+      ];
+
+      if (highConfidenceIndicators.some(indicator => line.includes(indicator))) {
+        return 'High';
+      } else if (mediumConfidenceIndicators.some(indicator => line.includes(indicator))) {
+        return 'Medium';
+      } else {
+        return 'Low';
+      }
+    };
 
     lines.forEach((line, index) => {
       const originalLine = content.split('\n')[index];
@@ -123,9 +147,11 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
           if (line.includes(keyword)) {
             // Extract potential bank names from this line and surrounding context
             const contextLines = [
-              content.split('\n')[Math.max(0, index - 1)],
+              content.split('\n')[Math.max(0, index - 2)] || '',
+              content.split('\n')[Math.max(0, index - 1)] || '',
               originalLine,
-              content.split('\n')[Math.min(content.split('\n').length - 1, index + 1)]
+              content.split('\n')[Math.min(content.split('\n').length - 1, index + 1)] || '',
+              content.split('\n')[Math.min(content.split('\n').length - 1, index + 2)] || ''
             ].join(' ');
             
             bankPatterns.forEach(pattern => {
@@ -133,13 +159,15 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
               if (matches) {
                 matches.forEach(bankName => {
                   if (bankName && bankName.length > 3) {
+                    const cleanBankName = bankName.trim().replace(/\s+/g, ' ');
+                    const confidence = getConfidenceLevel(line, contextLines.toLowerCase());
+                    
                     results.push({
                       issuerName: issuer,
-                      liquidityProvider: bankName.trim(),
-                      source: 'Web Search Result',
+                      liquidityProvider: cleanBankName,
+                      source: 'Financial Web Search',
                       relevantInfo: originalLine.trim(),
-                      confidence: line.includes('liquidity provider') ? 'High' : 
-                                line.includes('facility') ? 'Medium' : 'Low'
+                      confidence: confidence
                     });
                   }
                 });
@@ -150,15 +178,7 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
       }
     });
 
-    // Remove duplicates and return unique results
-    const uniqueResults = results.filter((result, index, self) => 
-      index === self.findIndex(r => 
-        r.liquidityProvider.toLowerCase() === result.liquidityProvider.toLowerCase() &&
-        r.issuerName === result.issuerName
-      )
-    );
-
-    return uniqueResults;
+    return results;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -288,6 +308,7 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
                 disabled={isLoading}
                 className="flex-1"
               >
+                <Search className="w-4 h-4 mr-2" />
                 {isLoading ? "Searching..." : "Search Liquidity Provider"}
               </Button>
               <Button
@@ -316,14 +337,24 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
               <Card key={index} className="shadow-financial">
                 <CardHeader>
                   <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">{result.issuerName}</CardTitle>
-                      <CardDescription>ABCP Issuer</CardDescription>
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-5 h-5 text-primary" />
+                      <div>
+                        <CardTitle className="text-lg">{result.issuerName}</CardTitle>
+                        <CardDescription>ABCP Issuer</CardDescription>
+                      </div>
                     </div>
                     <Badge 
                       variant={result.confidence === 'High' ? 'default' : 
                               result.confidence === 'Medium' ? 'secondary' : 'outline'}
                     >
+                      {result.confidence === 'High' ? (
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                      ) : result.confidence === 'Medium' ? (
+                        <AlertCircle className="w-3 h-3 mr-1" />
+                      ) : (
+                        <AlertCircle className="w-3 h-3 mr-1" />
+                      )}
                       {result.confidence} Confidence
                     </Badge>
                   </div>
@@ -336,10 +367,11 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
                   
                   <Separator />
                   
-                  <div>
-                    <h4 className="font-semibold text-muted-foreground mb-1">Source</h4>
-                    <p className="text-sm">{result.source}</p>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-muted-foreground" />
+                    <h4 className="font-semibold text-muted-foreground">Source</h4>
                   </div>
+                  <p className="text-sm">{result.source}</p>
                   
                   <div>
                     <h4 className="font-semibold text-muted-foreground mb-1">Relevant Information</h4>
