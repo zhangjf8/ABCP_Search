@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FirecrawlService } from '@/utils/FirecrawlService';
 import { ApiKeyForm } from '@/components/ApiKeyForm';
-import { ABCPSearchForm } from '@/components/ScrapeForm';
-import heroImage from '@/assets/financial-hero.jpg';
+import { ABCPSearchForm } from '@/components/ABCPSearchForm';
 
 const Index = () => {
   const [hasApiKey, setHasApiKey] = useState(false);
@@ -25,10 +24,7 @@ const Index = () => {
     <div className="min-h-screen bg-gradient-secondary">
       {/* Hero Section */}
       <div className="relative bg-gradient-primary text-primary-foreground">
-        <div 
-          className="absolute inset-0 bg-cover bg-center opacity-20"
-          style={{ backgroundImage: `url(${heroImage})` }}
-        />
+        <div className="absolute inset-0 opacity-20 bg-gradient-to-br from-primary-light/30 to-primary-dark/30" />
         <div className="relative container mx-auto px-4 py-16 text-center">
           <h1 className="text-4xl md:text-6xl font-bold mb-4">
             ABCP Liquidity Provider Intelligence
