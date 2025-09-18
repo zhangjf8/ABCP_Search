@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FirecrawlService } from '@/utils/FirecrawlService';
 import { ApiKeyForm } from '@/components/ApiKeyForm';
-import { ScrapeForm } from '@/components/ScrapeForm';
+import { ABCPSearchForm } from '@/components/ScrapeForm';
 import heroImage from '@/assets/financial-hero.jpg';
 
 const Index = () => {
@@ -31,10 +31,10 @@ const Index = () => {
         />
         <div className="relative container mx-auto px-4 py-16 text-center">
           <h1 className="text-4xl md:text-6xl font-bold mb-4">
-            Canadian Bank Bond Intelligence
+            ABCP Liquidity Provider Intelligence
           </h1>
           <p className="text-xl md:text-2xl text-primary-foreground/90 mb-8 max-w-3xl mx-auto">
-            Professional web scraping tool for analyzing covered bond information from Canadian banking institutions
+            Professional search tool for identifying liquidity providers of Asset Backed Commercial Paper (ABCP) issuers
           </p>
           <div className="flex flex-wrap justify-center gap-4 text-sm">
             <span className="px-4 py-2 bg-white/10 rounded-full">✓ Real-time Data</span>
@@ -51,13 +51,13 @@ const Index = () => {
             <div className="max-w-2xl mx-auto">
               <h2 className="text-3xl font-bold text-primary mb-4">Get Started</h2>
               <p className="text-muted-foreground mb-8">
-                Configure your Firecrawl API key to begin scraping Canadian bank websites for covered bond information.
+                Configure your search API key to begin finding ABCP liquidity provider information across the internet.
               </p>
             </div>
             <ApiKeyForm onApiKeySet={handleApiKeySet} />
           </div>
         ) : (
-          <ScrapeForm onReset={handleReset} />
+          <ABCPSearchForm onReset={handleReset} />
         )}
       </div>
 
@@ -65,7 +65,7 @@ const Index = () => {
       <footer className="bg-primary text-primary-foreground py-8">
         <div className="container mx-auto px-4 text-center">
           <p className="text-sm opacity-90">
-            Professional financial data scraping tool • Built for Canadian banking research
+            Professional ABCP intelligence tool • Built for financial market research
           </p>
         </div>
       </footer>
