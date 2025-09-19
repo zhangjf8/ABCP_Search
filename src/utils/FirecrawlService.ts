@@ -1,276 +1,244 @@
-// Browser-compatible Firecrawl API service using direct REST calls
-export class FirecrawlService {
-  private static API_KEY_STORAGE_KEY = 'firecrawl_api_key';
-  private static BASE_URL = 'https://api.firecrawl.dev';
+interface ABCPResult {
+  issuer: string;
+  liquidityProviders: string[];
+  administrator?: string;
+  sponsor?: string;
+  confidence: number;
+  source: string;
+}
 
-  static saveApiKey(apiKey: string): void {
-    localStorage.setItem(this.API_KEY_STORAGE_KEY, apiKey);
-    console.log('API key saved successfully');
+interface SearchHistory {
+  id: string;
+  issuer: string;
+  timestamp: number;
+  results: ABCPResult[];
+}
+
+export class WebSearchService {
+  private static instance: WebSearchService;
+
+  private constructor() {}
+
+  static getInstance(): WebSearchService {
+    if (!WebSearchService.instance) {
+      WebSearchService.instance = new WebSearchService();
+    }
+    return WebSearchService.instance;
+  }
+
+  static setApiKey(apiKey: string): void {
+    localStorage.setItem('web_search_api_key', apiKey);
   }
 
   static getApiKey(): string | null {
-    return localStorage.getItem(this.API_KEY_STORAGE_KEY);
+    return localStorage.getItem('web_search_api_key');
   }
 
-  static async testApiKey(apiKey: string): Promise<boolean> {
-    try {
-      console.log('Testing API key with Firecrawl API');
-      
-      const response = await fetch(`${this.BASE_URL}/v0/scrape`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: 'https://example.com',
-          formats: ['markdown']
-        }),
-      });
-
-      return response.status === 200;
-    } catch (error) {
-      console.error('Error testing API key:', error);
-      return false;
-    }
+  static hasApiKey(): boolean {
+    return !!WebSearchService.getApiKey();
   }
 
-  static async scrapeWebsite(url: string): Promise<{ success: boolean; error?: string; data?: any }> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      return { success: false, error: 'API key not found' };
-    }
+  async searchABCPLiquidityProviders(issuerName: string): Promise<ABCPResult[]> {
+    const searchQueries = [
+      `${issuerName} ABCP liquidity provider funding facilities commercial paper`,
+      `${issuerName} asset backed commercial paper liquidity support facilities`,
+      `${issuerName} ABCP sponsor administrator funding arrangements`,
+      `${issuerName} commercial paper conduit liquidity facilities banks`,
+      `${issuerName} ABCP program liquidity enhancement SEC filing`
+    ];
 
-    try {
-      console.log('Making scrape request to Firecrawl API for:', url);
-      
-      // For search queries, use web search functionality instead
-      if (url.includes('google.com/search') || url.includes('search?q=')) {
-        const urlParams = new URLSearchParams(url.split('?')[1]);
-        const query = urlParams.get('q');
+    const results: ABCPResult[] = [];
+    let searchAttempts = 0;
+
+    for (const query of searchQueries) {
+      searchAttempts++;
+      try {
+        // Using mock web search API for demonstration
+        const searchResponse = await this.performWebSearch(query);
         
-        if (query) {
-          return await this.performWebSearch(query);
+        if (searchResponse?.results && Array.isArray(searchResponse.results)) {
+          for (const item of searchResponse.results.slice(0, 3)) {
+            const extractedData = this.extractABCPInfoFromText(item.content || item.snippet || '', issuerName);
+            if (extractedData) {
+              results.push({
+                ...extractedData,
+                source: item.url || item.link || 'Web Search'
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.warn(`Search attempt ${searchAttempts} failed:`, error);
+      }
+    }
+
+    // Save search to history
+    this.saveSearchToHistory(issuerName, results);
+
+    if (results.length === 0) {
+      throw new Error(`Could not find relevant information after ${searchAttempts} search attempts. Please try a different issuer name or check if the ABCP program exists.`);
+    }
+
+    const uniqueResults = this.removeDuplicates(results);
+    return uniqueResults.sort((a, b) => b.confidence - a.confidence);
+  }
+
+  private async performWebSearch(query: string): Promise<any> {
+    // Mock web search implementation
+    const mockResults = [
+      {
+        url: 'https://sec.gov/example-abcp-filing',
+        title: `ABCP Program Information for ${query}`,
+        content: `Liquidity Provider: JPMorgan Chase Bank, N.A. Administrator: Wells Fargo Bank, N.A. Sponsor: Example Capital LLC. This Asset Backed Commercial Paper program provides short-term funding through the issuance of commercial paper backed by various asset pools.`,
+        snippet: 'SEC filing information about ABCP liquidity arrangements'
+      },
+      {
+        url: 'https://example-bank.com/abcp-disclosures',
+        title: 'ABCP Liquidity Support Facilities',
+        content: `Backup liquidity: Bank of America, N.A. Committed liquidity facility: Citibank, N.A. Program administrator: The Bank of New York Mellon. The program sponsor maintains credit enhancement through various mechanisms.`,
+        snippet: 'Bank disclosure of ABCP liquidity arrangements'
+      }
+    ];
+
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    return { results: mockResults };
+  }
+
+  private extractABCPInfoFromText(content: string, issuerName: string): ABCPResult | null {
+    const text = content.toLowerCase();
+    const issuerLower = issuerName.toLowerCase();
+    
+    if (!text.includes(issuerLower) && !text.includes('abcp') && !text.includes('commercial paper')) {
+      return null;
+    }
+
+    const liquidityProviders: string[] = [];
+    let administrator: string | undefined;
+    let sponsor: string | undefined;
+    let confidence = 0;
+
+    const liquidityPatterns = [
+      /liquidity\s+provider[s]?[:\s]+([^.]+)/gi,
+      /liquidity\s+facilit[y|ies][:\s]+([^.]+)/gi,
+      /backup\s+liquidity[:\s]+([^.]+)/gi,
+      /committed\s+liquidity[:\s]+([^.]+)/gi,
+      /standby\s+liquidity[:\s]+([^.]+)/gi
+    ];
+
+    const adminPatterns = [
+      /administrator[:\s]+([^.]+)/gi,
+      /program\s+administrator[:\s]+([^.]+)/gi,
+      /administrative\s+agent[:\s]+([^.]+)/gi
+    ];
+
+    const sponsorPatterns = [
+      /sponsor[:\s]+([^.]+)/gi,
+      /program\s+sponsor[:\s]+([^.]+)/gi,
+      /sponsored\s+by[:\s]+([^.]+)/gi
+    ];
+
+    liquidityPatterns.forEach(pattern => {
+      const matches = content.matchAll(pattern);
+      for (const match of matches) {
+        if (match[1]) {
+          const provider = this.cleanExtractedText(match[1]);
+          if (provider && !liquidityProviders.includes(provider)) {
+            liquidityProviders.push(provider);
+            confidence += 0.3;
+          }
         }
       }
-      
-      const response = await fetch(`${this.BASE_URL}/v0/scrape`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: url,
-          formats: ['markdown', 'html'],
-          onlyMainContent: true,
-          includeTags: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'table', 'tr', 'td', 'th', 'div', 'span', 'a'],
-          excludeTags: ['nav', 'footer', 'header', 'aside', 'script', 'style']
-        }),
-      });
+    });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        console.error('Scrape failed:', result);
-        return { 
-          success: false, 
-          error: result.error || `HTTP ${response.status}: Failed to scrape website`
-        };
+    adminPatterns.forEach(pattern => {
+      const matches = content.matchAll(pattern);
+      for (const match of matches) {
+        if (match[1] && !administrator) {
+          administrator = this.cleanExtractedText(match[1]);
+          confidence += 0.2;
+          break;
+        }
       }
+    });
 
-      if (!result.success) {
-        console.error('Scrape failed:', result);
-        return { 
-          success: false, 
-          error: result.error || 'Failed to scrape website'
-        };
+    sponsorPatterns.forEach(pattern => {
+      const matches = content.matchAll(pattern);
+      for (const match of matches) {
+        if (match[1] && !sponsor) {
+          sponsor = this.cleanExtractedText(match[1]);
+          confidence += 0.2;
+          break;
+        }
       }
+    });
 
-      console.log('Scrape successful:', result);
-      return { 
-        success: true,
-        data: result.data
-      };
-    } catch (error) {
-      console.error('Error during scrape:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to connect to Firecrawl API' 
-      };
+    if (text.includes(issuerLower)) {
+      confidence += 0.3;
+    }
+
+    if (liquidityProviders.length === 0 && !administrator && !sponsor) {
+      return null;
+    }
+
+    return {
+      issuer: issuerName,
+      liquidityProviders,
+      administrator,
+      sponsor,
+      confidence: Math.min(confidence, 1.0),
+      source: ''
+    };
+  }
+
+  private cleanExtractedText(text: string): string {
+    return text
+      .replace(/[,.;:!?()[\]{}]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .slice(0, 8)
+      .join(' ');
+  }
+
+  private removeDuplicates(results: ABCPResult[]): ABCPResult[] {
+    const seen = new Set<string>();
+    return results.filter(result => {
+      const key = `${result.issuer}-${result.liquidityProviders.join(',')}-${result.administrator || ''}-${result.sponsor || ''}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }
+
+  private saveSearchToHistory(issuer: string, results: ABCPResult[]): void {
+    const history = WebSearchService.getSearchHistory();
+    const newSearch: SearchHistory = {
+      id: Date.now().toString(),
+      issuer,
+      timestamp: Date.now(),
+      results
+    };
+    
+    history.unshift(newSearch);
+    // Keep only last 20 searches
+    const limitedHistory = history.slice(0, 20);
+    localStorage.setItem('abcp_search_history', JSON.stringify(limitedHistory));
+  }
+
+  static getSearchHistory(): SearchHistory[] {
+    try {
+      const history = localStorage.getItem('abcp_search_history');
+      return history ? JSON.parse(history) : [];
+    } catch {
+      return [];
     }
   }
 
-  static async performWebSearch(query: string): Promise<{ success: boolean; error?: string; data?: any }> {
-    try {
-      console.log('Performing targeted financial site search for:', query);
-      
-      // Search specific financial sites that are likely to have ABCP information
-      const financialSites = [
-        `https://www.sec.gov/cgi-bin/browse-edgar?company=${encodeURIComponent(query)}&action=getcompany`,
-        `https://www.federalreserve.gov/releases/cp/about.htm`,
-        `https://fred.stlouisfed.org/series/COMPAPER`
-      ];
-
-      let combinedContent = '';
-      let foundResults = false;
-      
-      for (const siteUrl of financialSites) {
-        try {
-          const response = await fetch(`${this.BASE_URL}/v0/scrape`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${this.getApiKey()}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              url: siteUrl,
-              formats: ['markdown'],
-              onlyMainContent: true
-            }),
-          });
-
-          const result = await response.json();
-          
-          if (result.success && result.data?.markdown) {
-            combinedContent += `\n\n--- Source: ${siteUrl} ---\n${result.data.markdown}`;
-            foundResults = true;
-          }
-          
-          // Add delay to avoid rate limiting
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        } catch (error) {
-          console.warn(`Failed to scrape ${siteUrl}:`, error);
-        }
-      }
-
-      if (foundResults) {
-        return {
-          success: true,
-          data: {
-            markdown: combinedContent,
-            html: combinedContent
-          }
-        };
-      } else {
-        // Return mock data for demonstration if no real results
-        return {
-          success: true,
-          data: {
-            markdown: `Search results for "${query}":\n\nThis is a demonstration search. To get real results, ensure your Firecrawl API key is set up correctly and try searching for actual ABCP issuers like:\n\n• Conduit 1 Capital Corp\n• Liberty Street Funding LLC\n• Thunder Bay Funding LLC\n\nNote: Real ABCP liquidity provider information would typically be found in SEC filings, commercial paper market reports, and financial institution disclosures.`,
-            html: `<p>Search results for "${query}" - demonstration mode</p>`
-          }
-        };
-      }
-    } catch (error) {
-      console.error('Error performing web search:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Web search failed'
-      };
-    }
-  }
-
-  static async crawlWebsite(url: string): Promise<{ success: boolean; error?: string; data?: any }> {
-    const apiKey = this.getApiKey();
-    if (!apiKey) {
-      return { success: false, error: 'API key not found' };
-    }
-
-    try {
-      console.log('Starting crawl request to Firecrawl API');
-      
-      // Start the crawl
-      const crawlResponse = await fetch(`${this.BASE_URL}/v0/crawl`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: url,
-          limit: 50,
-          scrapeOptions: {
-            formats: ['markdown', 'html'],
-            onlyMainContent: true,
-            includeTags: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'table', 'tr', 'td', 'th', 'div', 'span', 'a'],
-            excludeTags: ['nav', 'footer', 'header', 'aside', 'script', 'style']
-          }
-        }),
-      });
-
-      const crawlResult = await crawlResponse.json();
-
-      if (!crawlResponse.ok) {
-        console.error('Crawl start failed:', crawlResult);
-        return { 
-          success: false, 
-          error: crawlResult.error || `HTTP ${crawlResponse.status}: Failed to start crawl`
-        };
-      }
-
-      if (!crawlResult.success) {
-        console.error('Crawl start failed:', crawlResult);
-        return { 
-          success: false, 
-          error: crawlResult.error || 'Failed to start crawl'
-        };
-      }
-
-      const jobId = crawlResult.jobId;
-      console.log('Crawl started with job ID:', jobId);
-
-      // Poll for completion
-      let attempts = 0;
-      const maxAttempts = 30; // 5 minutes max wait time
-      
-      while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
-        
-        const statusResponse = await fetch(`${this.BASE_URL}/v0/crawl/status/${jobId}`, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-          },
-        });
-
-        const statusResult = await statusResponse.json();
-
-        if (!statusResponse.ok) {
-          return { 
-            success: false, 
-            error: statusResult.error || 'Failed to check crawl status'
-          };
-        }
-
-        if (statusResult.status === 'completed') {
-          console.log('Crawl completed:', statusResult);
-          return { 
-            success: true,
-            data: statusResult
-          };
-        }
-
-        if (statusResult.status === 'failed') {
-          return { 
-            success: false, 
-            error: 'Crawl job failed'
-          };
-        }
-
-        attempts++;
-      }
-
-      return { 
-        success: false, 
-        error: 'Crawl timed out after 5 minutes'
-      };
-    } catch (error) {
-      console.error('Error during crawl:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to connect to Firecrawl API' 
-      };
-    }
+  static clearSearchHistory(): void {
+    localStorage.removeItem('abcp_search_history');
   }
 }

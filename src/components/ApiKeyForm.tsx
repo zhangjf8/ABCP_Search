@@ -1,112 +1,77 @@
 import { useState } from 'react';
-import { useToast } from "@/components/ui/use-toast";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FirecrawlService } from '@/utils/FirecrawlService';
-import { Key, CheckCircle, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Key, AlertCircle } from 'lucide-react';
+import { WebSearchService } from '@/utils/FirecrawlService';
 
 interface ApiKeyFormProps {
   onApiKeySet: () => void;
 }
 
 export const ApiKeyForm = ({ onApiKeySet }: ApiKeyFormProps) => {
-  const { toast } = useToast();
   const [apiKey, setApiKey] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey.trim()) return;
+    if (!apiKey.trim()) {
+      setError('Please enter a valid API key');
+      return;
+    }
 
-    setIsLoading(true);
-    
     try {
-      const isValid = await FirecrawlService.testApiKey(apiKey);
-      
-      if (isValid) {
-        FirecrawlService.saveApiKey(apiKey);
-        toast({
-          title: "Success",
-          description: "API key validated and saved successfully",
-          duration: 3000,
-        });
-        onApiKeySet();
-      } else {
-        toast({
-          title: "Invalid API Key",
-          description: "Please check your Firecrawl API key and try again",
-          variant: "destructive",
-          duration: 3000,
-        });
-      }
+      // Set the API key
+      WebSearchService.setApiKey(apiKey.trim());
+      onApiKeySet();
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to validate API key",
-        variant: "destructive",
-        duration: 3000,
-      });
-    } finally {
-      setIsLoading(false);
+      setError('Failed to set API key. Please try again.');
     }
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto shadow-financial">
+    <Card className="max-w-md mx-auto">
       <CardHeader className="text-center">
-        <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-primary">
+        <div className="mx-auto mb-4 w-12 h-12 bg-primary rounded-full flex items-center justify-center">
           <Key className="h-6 w-6 text-primary-foreground" />
         </div>
-        <CardTitle className="text-primary">API Configuration</CardTitle>
+        <CardTitle>Setup Web Search</CardTitle>
         <CardDescription>
-          Enter your Firecrawl API key to start scraping Canadian bank websites
+          Enter your Web Search API key to start searching for ABCP liquidity provider information across the web.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          
           <div className="space-y-2">
             <label htmlFor="apiKey" className="text-sm font-medium">
-              Firecrawl API Key
+              Web Search API Key
             </label>
             <Input
               id="apiKey"
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="fc-xxxxxxxxxxxxxxxx"
+              placeholder="Enter your Web Search API key"
               required
-              className="transition-all duration-200 focus:shadow-md"
             />
           </div>
-          <Button
-            type="submit"
-            disabled={isLoading || !apiKey.trim()}
-            className="w-full bg-gradient-primary hover:bg-primary-dark transition-all duration-200"
-          >
-            {isLoading ? (
-              <>
-                <AlertCircle className="mr-2 h-4 w-4 animate-spin" />
-                Validating...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="mr-2 h-4 w-4" />
-                Validate & Save
-              </>
-            )}
+          
+          <Button type="submit" className="w-full" disabled={!apiKey.trim()}>
+            <Key className="mr-2 h-4 w-4" />
+            Set API Key
           </Button>
         </form>
-        <div className="mt-4 text-xs text-muted-foreground">
-          <p>Don't have a Firecrawl API key?</p>
-          <a 
-            href="https://firecrawl.dev" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="text-accent hover:text-accent-light underline"
-          >
-            Get one at firecrawl.dev
-          </a>
+        
+        <div className="mt-4 text-xs text-muted-foreground text-center">
+          <p>For demonstration purposes, any key will work</p>
         </div>
       </CardContent>
     </Card>

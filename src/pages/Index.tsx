@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FirecrawlService } from '@/utils/FirecrawlService';
+import { WebSearchService } from '@/utils/FirecrawlService';
 import { ApiKeyForm } from '@/components/ApiKeyForm';
 import { ABCPSearchForm } from '@/components/ABCPSearchForm';
 
@@ -7,7 +7,7 @@ const Index = () => {
   const [hasApiKey, setHasApiKey] = useState(false);
 
   useEffect(() => {
-    const existingKey = FirecrawlService.getApiKey();
+    const existingKey = WebSearchService.getApiKey();
     setHasApiKey(!!existingKey);
   }, []);
 
@@ -16,7 +16,7 @@ const Index = () => {
   };
 
   const handleReset = () => {
-    localStorage.removeItem('firecrawl_api_key');
+    localStorage.removeItem('web_search_api_key');
     setHasApiKey(false);
   };
 
