@@ -12,6 +12,8 @@ import { FirecrawlService } from '@/utils/FirecrawlService';
 interface SearchResult {
   issuerName: string;
   liquidityProvider: string;
+  administrator?: string;
+  sponsor?: string;
   source: string;
   relevantInfo: string;
   confidence: 'High' | 'Medium' | 'Low';
@@ -28,11 +30,20 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
   const [progress, setProgress] = useState(0);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
+  // Enhanced search queries specifically for ABCP liquidity provider information
+  const searchQueries = [
+    `"${issuerName}" ABCP liquidity provider facility`,
+    `"${issuerName}" asset backed commercial paper liquidity support`,
+    `"${issuerName}" ABCP program liquidity enhancement bank`,
+    `"${issuerName}" commercial paper conduit liquidity facility`,
+    `"${issuerName}" backup liquidity agreement`,
+    `"${issuerName}" standby facility ABCP`
+  ];
+
   const searchABCPLiquidityProvider = async (issuer: string): Promise<SearchResult[]> => {
     setProgress(10);
     
-    // Enhanced search queries specifically for ABCP liquidity provider information
-    const searchQueries = [
+    const queries = [
       `"${issuer}" ABCP liquidity provider facility`,
       `"${issuer}" asset backed commercial paper liquidity support`,
       `"${issuer}" ABCP program liquidity enhancement bank`,
@@ -44,8 +55,8 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
     const results: SearchResult[] = [];
     let processedQueries = 0;
     
-    for (const query of searchQueries) {
-      setProgress(10 + (processedQueries / searchQueries.length) * 70);
+    for (const query of queries) {
+      setProgress(10 + (processedQueries / queries.length) * 70);
       
       try {
         console.log(`Searching for: ${query}`);
@@ -101,6 +112,12 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
       'liquidity enhancement', 'backup liquidity', 'liquidity agreement',
       'credit facility', 'standby facility', 'revolving facility',
       'committed facility', 'liquidity backstop', 'liquidity arrangement'
+    ];
+
+    // Administrator/Sponsor keywords
+    const administratorKeywords = [
+      'administrator', 'program administrator', 'servicing agent', 'administrative agent',
+      'sponsor', 'program sponsor', 'conduit sponsor', 'abcp sponsor'
     ];
     
     // Enhanced bank/financial institution patterns
@@ -162,9 +179,33 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
                     const cleanBankName = bankName.trim().replace(/\s+/g, ' ');
                     const confidence = getConfidenceLevel(line, contextLines.toLowerCase());
                     
+                    // Extract administrator/sponsor if mentioned in context
+                    let administrator = '';
+                    let sponsor = '';
+                    
+                    administratorKeywords.forEach(keyword => {
+                      if (contextLines.toLowerCase().includes(keyword)) {
+                        const adminMatches = contextLines.match(pattern);
+                        if (adminMatches && adminMatches.some(match => 
+                          contextLines.toLowerCase().indexOf(match.toLowerCase()) > 
+                          contextLines.toLowerCase().indexOf(keyword) - 50 &&
+                          contextLines.toLowerCase().indexOf(match.toLowerCase()) < 
+                          contextLines.toLowerCase().indexOf(keyword) + 50
+                        )) {
+                          if (keyword.includes('administrator')) {
+                            administrator = cleanBankName;
+                          } else if (keyword.includes('sponsor')) {
+                            sponsor = cleanBankName;
+                          }
+                        }
+                      }
+                    });
+                    
                     results.push({
                       issuerName: issuer,
                       liquidityProvider: cleanBankName,
+                      administrator: administrator || undefined,
+                      sponsor: sponsor || undefined,
                       source: 'Financial Web Search',
                       relevantInfo: originalLine.trim(),
                       confidence: confidence
@@ -213,10 +254,10 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
         });
       } else {
         toast({
-          title: "No Results",
-          description: "No liquidity provider information found for this issuer",
+          title: "No Results Found",
+          description: `Could not find relevant ABCP information after ${searchQueries.length} targeted searches`,
           variant: "destructive",
-          duration: 3000,
+          duration: 4000,
         });
       }
     } catch (error) {
@@ -364,6 +405,23 @@ export const ABCPSearchForm = ({ onReset }: ABCPSearchFormProps) => {
                     <h4 className="font-semibold text-primary mb-1">Liquidity Provider</h4>
                     <p className="text-lg font-medium">{result.liquidityProvider}</p>
                   </div>
+
+                  {(result.administrator || result.sponsor) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {result.administrator && (
+                        <div>
+                          <h4 className="font-semibold text-muted-foreground mb-1">Administrator</h4>
+                          <p className="text-sm">{result.administrator}</p>
+                        </div>
+                      )}
+                      {result.sponsor && (
+                        <div>
+                          <h4 className="font-semibold text-muted-foreground mb-1">Sponsor</h4>
+                          <p className="text-sm">{result.sponsor}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   <Separator />
                   
