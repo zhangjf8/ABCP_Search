@@ -92,13 +92,16 @@ export const ApiKeyForm = ({ onApiKeySet }: ApiKeyFormProps) => {
         
         <div className="mt-4 text-xs text-muted-foreground space-y-2">
           <div className="text-center">
-            <p><strong>API Key Requirements:</strong></p>
+            <p><strong>Real API Setup Instructions:</strong></p>
           </div>
           <div className="space-y-1">
-            <p>• <strong>Google:</strong> Get free key at Google Cloud Console (100 searches/day)</p>
-            <p>• <strong>Bing:</strong> Get free key at Azure Cognitive Services (3,000 searches/month)</p>
-            <p>• <strong>SerpAPI:</strong> Get free key at serpapi.com (100 searches/month)</p>
-            <p>• <strong>Firecrawl:</strong> Get key at firecrawl.dev (specialized web scraping)</p>
+            <p>• <strong>Google:</strong> Get API key + Custom Search Engine ID from Google Cloud Console</p>
+            <p>• <strong>Bing:</strong> Get subscription key from Azure Cognitive Services</p>
+            <p>• <strong>SerpAPI:</strong> Get API key from serpapi.com (easiest to set up)</p>
+            <p>• <strong>Firecrawl:</strong> Get API key from firecrawl.dev</p>
+          </div>
+          <div className="text-center pt-2 border-t">
+            <p className="text-amber-600"><strong>Note:</strong> Real API keys required for live internet search</p>
           </div>
         </div>
       </CardContent>

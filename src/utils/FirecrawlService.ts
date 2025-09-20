@@ -104,123 +104,30 @@ export class WebSearchService {
     }
 
     try {
-      switch (selectedApi) {
-        case 'google':
-          return await this.performGoogleSearch(query, apiKey);
-        case 'bing':
-          return await this.performBingSearch(query, apiKey);
-        case 'serpapi':
-          return await this.performSerpApiSearch(query, apiKey);
-        case 'firecrawl':
-          return await this.performFirecrawlSearch(query, apiKey);
-        default:
-          return await this.performMockSearch(query);
-      }
-    } catch (error) {
-      console.warn(`${selectedApi} search failed, falling back to mock:`, error);
-      return await this.performMockSearch(query);
-    }
-  }
-
-  private async performGoogleSearch(query: string, apiKey: string): Promise<any> {
-    const cx = 'YOUR_SEARCH_ENGINE_ID'; // User needs to provide this
-    const response = await fetch(
-      `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&num=5`
-    );
-    
-    if (!response.ok) {
-      throw new Error(`Google Search API error: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return {
-      results: data.items?.map((item: any) => ({
-        url: item.link,
-        title: item.title,
-        content: item.snippet,
-        snippet: item.snippet
-      })) || []
-    };
-  }
-
-  private async performBingSearch(query: string, apiKey: string): Promise<any> {
-    const response = await fetch(
-      `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=5`,
-      {
+      const response = await fetch('/api/websearch', {
+        method: 'POST',
         headers: {
-          'Ocp-Apim-Subscription-Key': apiKey
-        }
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          apiKey,
+          apiType: selectedApi,
+          numResults: 5
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
-    );
-    
-    if (!response.ok) {
-      throw new Error(`Bing Search API error: ${response.statusText}`);
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error(`${selectedApi} search failed:`, error);
+      throw error;
     }
-    
-    const data = await response.json();
-    return {
-      results: data.webPages?.value?.map((item: any) => ({
-        url: item.url,
-        title: item.name,
-        content: item.snippet,
-        snippet: item.snippet
-      })) || []
-    };
-  }
-
-  private async performSerpApiSearch(query: string, apiKey: string): Promise<any> {
-    const response = await fetch(
-      `https://serpapi.com/search?engine=google&q=${encodeURIComponent(query)}&api_key=${apiKey}&num=5`
-    );
-    
-    if (!response.ok) {
-      throw new Error(`SerpAPI error: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return {
-      results: data.organic_results?.map((item: any) => ({
-        url: item.link,
-        title: item.title,
-        content: item.snippet,
-        snippet: item.snippet
-      })) || []
-    };
-  }
-
-  private async performFirecrawlSearch(query: string, apiKey: string): Promise<any> {
-    // Firecrawl is more for scraping than searching, so we'll use it differently
-    // For now, return mock results but in a real implementation, 
-    // you might want to scrape specific financial websites
-    return await this.performMockSearch(query);
-  }
-
-  private async performMockSearch(query: string): Promise<any> {
-    const mockResults = [
-      {
-        url: 'https://sec.gov/example-abcp-filing',
-        title: `ABCP Program Information for ${query}`,
-        content: `Liquidity Provider: JPMorgan Chase Bank, N.A. Administrator: Wells Fargo Bank, N.A. Sponsor: Example Capital LLC. This Asset Backed Commercial Paper program provides short-term funding through the issuance of commercial paper backed by various asset pools.`,
-        snippet: 'SEC filing information about ABCP liquidity arrangements'
-      },
-      {
-        url: 'https://moodys.com/abcp-rating-report',
-        title: 'ABCP Liquidity Support Facilities Rating Report',
-        content: `Backup liquidity: Bank of America, N.A. Committed liquidity facility: Citibank, N.A. Program administrator: The Bank of New York Mellon. The program sponsor maintains credit enhancement through various mechanisms. Rating: A-1+ by Standard & Poor's.`,
-        snippet: 'Moody\'s rating agency report on ABCP liquidity arrangements'
-      },
-      {
-        url: 'https://bloomberg.com/abcp-market-news',
-        title: 'ABCP Market Analysis and Liquidity Trends',
-        content: `Recent ABCP issuances show strong liquidity support from major banks including Wells Fargo Bank, N.A., Deutsche Bank AG, and Royal Bank of Canada. Program administrators typically include major trust banks with extensive commercial paper experience.`,
-        snippet: 'Bloomberg financial news on ABCP market trends'
-      }
-    ];
-
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    return { results: mockResults };
   }
 
   private extractABCPInfoFromText(content: string, issuerName: string): ABCPResult | null {

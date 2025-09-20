@@ -1,40 +1,130 @@
-// This is a mock API endpoint for web search
-// In a real implementation, you would integrate with a web search API
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { query, numResults = 5, category } = req.body;
+  const { query, apiKey, apiType = 'google', numResults = 5 } = req.body;
+
+  if (!query || !apiKey) {
+    return res.status(400).json({ error: 'Query and API key are required' });
+  }
 
   try {
-    // Mock response for demonstration
-    // In production, integrate with Google Custom Search, Bing Search API, or similar
-    const mockResults = [
-      {
-        url: 'https://sec.gov/example-abcp-filing',
-        title: `ABCP Program Information for ${query}`,
-        content: `Liquidity Provider: JPMorgan Chase Bank, N.A. Administrator: Wells Fargo Bank, N.A. Sponsor: Example Capital LLC. This Asset Backed Commercial Paper program provides short-term funding through the issuance of commercial paper backed by various asset pools.`,
-        snippet: 'SEC filing information about ABCP liquidity arrangements'
-      },
-      {
-        url: 'https://example-bank.com/abcp-disclosures',
-        title: 'ABCP Liquidity Support Facilities',
-        content: `Backup liquidity: Bank of America, N.A. Committed liquidity facility: Citibank, N.A. Program administrator: The Bank of New York Mellon. The program sponsor maintains credit enhancement through various mechanisms.`,
-        snippet: 'Bank disclosure of ABCP liquidity arrangements'
-      }
-    ];
+    let results = [];
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    switch (apiType) {
+      case 'google':
+        results = await performGoogleSearch(query, apiKey, numResults);
+        break;
+      case 'bing':
+        results = await performBingSearch(query, apiKey, numResults);
+        break;
+      case 'serpapi':
+        results = await performSerpApiSearch(query, apiKey, numResults);
+        break;
+      default:
+        return res.status(400).json({ error: 'Unsupported API type' });
+    }
 
     res.status(200).json({
-      results: mockResults.slice(0, numResults),
+      results,
       query,
-      total: mockResults.length
+      total: results.length
     });
   } catch (error) {
     console.error('Search API error:', error);
-    res.status(500).json({ error: 'Search failed' });
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Search failed' 
+    });
   }
+}
+
+async function performGoogleSearch(query: string, apiKey: string, numResults: number) {
+  // For Google Custom Search, users need both API key and Custom Search Engine ID
+  // For demo purposes, we'll use a general search endpoint
+  const response = await fetch(
+    `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=017576662512468239146:omuauf_lfve&q=${encodeURIComponent(query)}&num=${numResults}`,
+    {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Google Search API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  
+  if (data.error) {
+    throw new Error(`Google Search API error: ${data.error.message}`);
+  }
+
+  return data.items?.map((item: any) => ({
+    url: item.link,
+    title: item.title,
+    content: item.snippet,
+    snippet: item.snippet
+  })) || [];
+}
+
+async function performBingSearch(query: string, apiKey: string, numResults: number) {
+  const response = await fetch(
+    `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=${numResults}`,
+    {
+      method: 'GET',
+      headers: {
+        'Ocp-Apim-Subscription-Key': apiKey,
+        'Accept': 'application/json',
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Bing Search API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  
+  if (data.error) {
+    throw new Error(`Bing Search API error: ${data.error.message}`);
+  }
+
+  return data.webPages?.value?.map((item: any) => ({
+    url: item.url,
+    title: item.name,
+    content: item.snippet,
+    snippet: item.snippet
+  })) || [];
+}
+
+async function performSerpApiSearch(query: string, apiKey: string, numResults: number) {
+  const response = await fetch(
+    `https://serpapi.com/search?engine=google&q=${encodeURIComponent(query)}&api_key=${apiKey}&num=${numResults}`,
+    {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`SerpAPI error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  
+  if (data.error) {
+    throw new Error(`SerpAPI error: ${data.error}`);
+  }
+
+  return data.organic_results?.map((item: any) => ({
+    url: item.link,
+    title: item.title,
+    content: item.snippet,
+    snippet: item.snippet
+  })) || [];
 }
